@@ -1,0 +1,54 @@
+#!/bin/bash
+
+set -e
+
+ORIG_IMAGE_NAME=${1}
+FOLDER="root_dir"
+RESIZE_IMAGE_SIZE="2048"
+RESIZE_P2_SIZE="512"
+RESIZE_P3_SIZE=$(($RESIZE_IMAGE_SIZE - $RESIZE_P2_SIZE - 32))
+RESIZE_IMAGE_NAME="resize.img"
+
+if [ $# -lt 1 ]; then
+	printf "usage: <orig image file>\n" >&2
+	exit 1
+fi
+
+if ! [ -f "$ORIG_IMAGE_NAME" ]; then
+	printf "image not found: %s\n" "$ORIG_IMAGE_NAME" >&2
+	exit 2
+fi
+
+cd orig
+echo "***** Mount the orig image file *****"
+./mount-img mount ${ORIG_IMAGE_NAME} ${FOLDER}
+
+cd ../resize
+echo "***** Create a new resize image file. Please wait for a few minutes... *****"
+./create-img "${RESIZE_IMAGE_NAME}" "${RESIZE_IMAGE_SIZE}" "${RESIZE_P2_SIZE}"
+
+echo "***** Mount the new image file *****"
+./mount-img mount ${RESIZE_IMAGE_NAME} ${FOLDER}
+
+cd ../
+
+echo "***** Copy the whole RFS from orig image to new resize image. (p1)... *****"
+cp -a orig/${FOLDER}/p1/* resize/${FOLDER}/p1/
+echo "***** Copy the whole RFS from orig image to new resize image. (p2)... Please wait for a few minutes... *****"
+cp -a orig/${FOLDER}/p2/* resize/${FOLDER}/p2/
+echo "***** Copy the whole RFS from orig image to new resize image. (p3)... *****"
+cp -a orig/${FOLDER}/p3/* resize/${FOLDER}/p3/
+
+# Remove expand2fs file to make sure the initial script will be triggered.
+rm -f resize/${FOLDER}/p3/v1/sbin_rw/upper/expand2fs.bak
+rm -f resize/${FOLDER}/p3/v1/sbin_rw/upper/expand2fs
+
+cd orig
+echo "***** umount the orig image file *****"
+./mount-img umount ${ORIG_IMAGE_NAME} ${FOLDER}
+
+cd ../resize
+echo "***** umount the new resize image file *****"
+./mount-img umount ${RESIZE_IMAGE_NAME} ${FOLDER}
+
+echo "***** Complete!!! *****"

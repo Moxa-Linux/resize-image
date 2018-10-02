@@ -1,0 +1,75 @@
+#!/bin/bash
+
+set -e
+
+# need to determine whether ask to pass three parameters
+if ! [ $# -ge 1 ]; then
+	echo "usage: <image> [image-size] [backup-part-size>]\n" >&2
+	exit 1
+fi
+
+LOOPDEV=/dev/loopimg
+MAJOR=7
+MINOR=20
+
+IMAGE="$1"
+IMG_SIZE_M=512
+IMG_BAK_PART_SIZE_M=128
+
+if [ ! -z "$2" ]; then
+	IMG_SIZE_M=$2
+fi
+if [ ! -z "$3" ]; then
+	IMG_BAK_PART_SIZE_M=$3
+fi
+
+
+# create image file
+dd if=/dev/zero of="$IMAGE" bs=1M count=${IMG_SIZE_M}
+
+# partition image file
+echo -e "n\np\n1\n\n+32M\nn\np\n2\n\n+${IMG_BAK_PART_SIZE_M}M\nn\np\n3\n\n\na\n1\nt\n1\nb\np\nw\n" | fdisk "${IMAGE}"
+
+PART_INFO="$(fdisk -l "$IMAGE" | grep "$IMAGE[0-9]" | sed s/*//)"
+PART_COUNT="$(echo "$PART_INFO" | wc -l)"
+
+# attach image to loop-device
+[ -e "$LOOPDEV" ] || mknod "$LOOPDEV" b $MAJOR ${MINOR}0
+losetup $LOOPDEV "$IMAGE"
+
+for PART in $(seq 1 $PART_COUNT); do
+	PART_NAME=${IMAGE}${PART}
+	PART_DEV=${LOOPDEV}p${PART}
+	PART_MINOR=${MINOR}${PART}
+	MOUNT_POINT=${ROOT_DIR}/p${PART}
+
+	[ -e "$PART_DEV" ] || mknod "$PART_DEV" b $MAJOR $PART_MINOR
+	[ -d "$MOUNT_POINT" ] || mkdir -p "$MOUNT_POINT"
+
+	START=$(echo "$PART_INFO" | grep "$PART_NAME" | awk '{print $2}')
+	END=$(echo "$PART_INFO" | grep "$PART_NAME" | awk '{print $3}')
+
+	OFFSET=$(expr $START \* 512)
+	SIZE=$(expr \( $END - $START + 1 \) \* 512)
+
+	printf "partition = %s, offset = %s, size = %s\n" $PART $OFFSET $SIZE
+
+	# map partition to device node
+	losetup -o $OFFSET --sizelimit $SIZE $PART_DEV $LOOPDEV
+done
+
+# format partitions
+mkfs -t vfat ${LOOPDEV}p1
+mkfs -t ext4 ${LOOPDEV}p2
+mkfs -t ext4 ${LOOPDEV}p3
+
+# detach image from loop-device
+for PART in $(seq 1 $PART_COUNT); do
+	PART_DEV=${LOOPDEV}p${PART}
+	losetup -d "$PART_DEV" || true
+
+	rm "$PART_DEV" || true
+done
+
+losetup -d $LOOPDEV || true
+rm "$LOOPDEV" || true
