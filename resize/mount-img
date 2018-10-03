@@ -1,121 +1,172 @@
 #!/bin/bash
 
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Name:
+#	Mount image utility
+#
+# Authors:
+#	2017	Zack YL Shih	<ZackYL.Shih@moxa.com>
+#	2018	Fero JD Zhou	<FeroJD.Zhou@moxa.com>
+#	2018	Ken CJ Chou	<KenCJ.Chou@moxa.com>
+#
+
 set -e
 
-generate_new_minor () {
-	local num=$((100 + $RANDOM % 801))
-	echo $num
+VERSION=1.0.0
+
+usage() {
+	echo -e "Usage:"
+	echo -e "  Mount image"
+	echo -e "    # ${0} m|mount <image_file> <mount_dir>"
+	echo -e "  Unmount image"
+	echo -e "    # ${0} u|umount <mount_dir>"
+	echo -e ""
+	echo -e "Parameters:"
+	echo -e "  image_file"
+	echo -e "    A image format file, usually with \".img\" file extension"
+	echo -e ""
+	echo -e "  mount_dir"
+	echo -e "    The path of directory for the image to be mounted"
+	echo -e ""
+	echo -e "Examples:"
+	echo -e "  Mount an image file named \"example.img\" at \"/tmp/mnt\""
+	echo -e "  # ./mount-img mount example.img /tmp/mnt"
+	echo -e ""
+	echo -e "  Unmount the image which mounted at \"/tmp/mnt\""
+	echo -e "  # ./mount-img umount /tmp/mnt"
+	echo -e ""
+	return 0
 }
 
-if [ $# -lt 3 ]; then
-	printf "usage: [mount|umount] <image> <root-dir> [readonly]\n" >&2
-	printf "* readonly if used only for mount"
-	exit 1
-fi
+random_minor_number() {
+	echo "$((100 + RANDOM % 801))"
+	return 0
+}
 
-# Loop device fixed value 7
-MAJOR=7
+mount_img() {
+	local img=${1}
+	local mnt_dir=${2}
+	local lodev_minor
+	local loopdev
+	local part_info
+	local part_count
 
-# Defualt minor value
-MINOR=300
-
-LOOPDEV=/dev/loopimg${MINOR}
-
-
-ACTION="$1"
-IMAGE="$2"
-ROOT_DIR="$3"
-
-if [ "$4" == "readonly" ]; then
-	MODE="-r"
-fi
-
-if ! [ -f "$IMAGE" ]; then
-	printf "image not found: %s\n" "$IMAGE" >&2
-	exit 2
-fi
-
-PART_INFO="$(fdisk -l "$IMAGE" | grep "$IMAGE[0-9]" | sed s/*//)"
-PART_COUNT="$(echo "$PART_INFO" | wc -l)"
-
-if ! [ $PART_COUNT -eq 3 ]; then
-	printf "unexpected image content: should contain exactly 3 partitions\n" >&2
-	exit 2
-fi
-
-case "$ACTION" in
-mount)
-	while true; do
-		[ -e "$LOOPDEV" ] || mknod "$LOOPDEV" b $MAJOR ${MINOR}0
-		if losetup $LOOPDEV "$IMAGE" &> /dev/null; then
-			echo $MINOR > ./.lastmountnum
-			break;
-		fi
-		MINOR=$(generate_new_minor)
-		LOOPDEV=/dev/loopimg${MINOR}
-	done
-
-	for PART in $(seq 1 $PART_COUNT); do
-		PART_NAME=${IMAGE}${PART}
-		PART_DEV=${LOOPDEV}p${PART}
-		PART_MINOR=${MINOR}${PART}
-		MOUNT_POINT=${ROOT_DIR}/p${PART}
-
-		[ -e "$PART_DEV" ] || mknod "$PART_DEV" b $MAJOR $PART_MINOR
-		[ -d "$MOUNT_POINT" ] || mkdir -p "$MOUNT_POINT"
-
-		START=$(echo "$PART_INFO" | grep "$PART_NAME" | awk '{print $2}')
-		END=$(echo "$PART_INFO" | grep "$PART_NAME" | awk '{print $3}')
-
-		OFFSET=$(expr $START \* 512)
-		SIZE=$(expr \( $END - $START + 1 \) \* 512)
-
-		printf "partition = %s, offset = %s, size = %s\n" $PART $OFFSET $SIZE
-
-		# map partition to device node
-		losetup -o $OFFSET --sizelimit $SIZE $PART_DEV $LOOPDEV
-
-		# mount it
-		mount $MODE "$PART_DEV" "$MOUNT_POINT"
-	done
-	;;
-
-umount)
-	if [ -f ./.lastmountnum ]; then
-		echo Find the last mount minor number
-		MINOR=$(cat ./.lastmountnum)
-		LOOPDEV=/dev/loopimg${MINOR}
-	else
-		echo Can not found ./.lastmountnum. Terminate for safe
-		exit
+	if ! [ -f "$img" ]; then
+		echo "image file not found: ${img}" >&2
+		exit 2
 	fi
 
-	for PART in $(seq 1 $PART_COUNT); do
-		PART_DEV=${LOOPDEV}p${PART}
+	part_info="$(fdisk -l "$img" | grep "${img}[0-9]" | sed 's/*//')"
+	part_count="$(echo "$part_info" | wc -l)"
 
-		umount "$PART_DEV" || true
+	mkdir -p $mnt_dir
 
-		losetup -d "$PART_DEV" || true
-
-		rm "$PART_DEV" || true
+	lodev_minor=$(random_minor_number)
+	loopdev=/dev/loopimg${lodev_minor}
+	while [ -e "$loopdev" ]; do
+		lodev_minor=$(random_minor_number)
+		loopdev=/dev/loopimg${lodev_minor}
 	done
 
-	losetup -d $LOOPDEV || true
-	rm "$LOOPDEV" || true
+	mknod "$loopdev" b 7 ${lodev_minor}0
+	losetup ${loopdev} ${img}
+	echo ${lodev_minor} > ${mnt_dir}/.mountnum
 
-	rm -rf "$ROOT_DIR"
+	for part in $(seq 1 ${part_count}); do
+		local part_name=${img}${part}
+		local part_dev=${loopdev}p${part}
+		local part_minor=${lodev_minor}${part}
+		local mnt_point=${mnt_dir}/p${part}
 
-	for num in 0 1 2 3
-	do
-		rm -f /dev/loop${MINOR}${num}
+		[ -e "$part_dev" ] || mknod "$part_dev" b 7 $part_minor
+		mkdir -p "$mnt_point"
+
+		local pstart=$(echo "$part_info" | grep "$part_name" | awk '{print $2}')
+		local pend=$(echo "$part_info" | grep "$part_name" | awk '{print $3}')
+		local offset=$((pstart * 512))
+		local size=$(( pend * 512 - pstart * 512 + 512))
+
+		losetup -o ${offset} --sizelimit ${size} ${part_dev} ${loopdev}
+
+		# mount it
+		mount "$part_dev" "$mnt_point"
+	done
+	
+	return 0
+}
+
+unmount_img() {
+	local mnt_dir=${1}
+	local lodev_minor
+	local loopdev
+	local part_count
+
+	if [ -f ${mnt_dir}/.mountnum ]; then
+		lodev_minor=$(cat ${mnt_dir}/.mountnum)
+		loopdev=/dev/loopimg${lodev_minor}
+	else
+		echo "Can not found .mountnum. Terminate for safe" >&2
+		return 1
+	fi
+
+	part_count=$(ls ${mnt_dir} | grep "p[0-9]" | wc -l)
+
+	for part in $(seq 1 ${part_count}); do
+		local part_dev=${loopdev}p${part}
+
+		umount "$part_dev"
+		losetup -d "$part_dev"
+		rm "$part_dev"
 	done
 
-	rm -f ./.lastmountnum
-	;;
+	losetup -d ${loopdev}
+	rm "${loopdev}"
 
-*)
-	printf "unexpected action: %s\n" "$ACTION" >&2
+	rm -rf "$mnt_dir"
+
+	for num in $(seq 0 ${part_count}); do
+		rm -f /dev/loop${lodev_minor}${num}
+	done
+
+	return 0
+}
+
+main() {
+	case "${1}" in
+	"-v"|"--version")
+		echo ${VERSION}
+		;;
+	"m"|"mount")
+		if [ $# -ne 3 ]; then
+			usage >&2
+			return 1
+		fi
+
+		mount_img "${2}" "${3}"		
+		;;
+	"u"|"umount")
+		if [ $# -ne 2 ]; then
+			usage >&2
+			return 1
+		fi
+
+		unmount_img "${2}"		
+		;;
+	*)
+		echo "Unknown action: \"${1}\"" >&2
+		usage >&2
+		return 1
+		;;
+	esac
+}
+
+if [ "${EUID}" -ne 0 ]; then
+	echo "Please run as root" >&2
 	exit 1
-	;;
+fi
 
-esac
+main "$@"
+exit 0
+
