@@ -1,54 +1,155 @@
 #!/bin/bash
 
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Name:
+#	Resize image utility
+#
+# Authors:
+#	2018	Wes Huang	<Wes.Huang@moxa.com>
+#	2018	Ken CJ Chou	<KenCJ.Chou@moxa.com>
+#
+
 set -e
 
-ORIG_IMAGE_NAME=${1}
-FOLDER="root_dir"
-RESIZE_IMAGE_SIZE="2048"
-RESIZE_P2_SIZE="512"
-RESIZE_P3_SIZE=$(($RESIZE_IMAGE_SIZE - $RESIZE_P2_SIZE - 32))
-RESIZE_IMAGE_NAME="resize.img"
+VERSION=1.0.0
+ORI_MNT_DIR="/tmp/original_mnt"
+RES_MNT_DIR="/tmp/resized_mnt"
+RES_IMAGE_NAME="resize.img"
 
-if [ $# -lt 1 ]; then
-	printf "usage: <orig image file>\n" >&2
+usage() {
+	echo -e "Usage:"
+	echo -e "  # ${0} <image_type> <image_file>"
+	echo -e ""
+	echo -e "Parameters:"
+	echo -e "  image_type"
+	echo -e "    Image type must be A or B"
+	echo -e "    Further informationcan be found at README"
+	echo -e ""
+	echo -e "  image_file"
+	echo -e "    A image format file, usually with \".img\" file extension"
+	echo -e ""
+	echo -e "Example:"
+	echo -e "  Resize a type A image which named \"example.img\""
+	echo -e "  The output image file will be \"resize.img\""
+	echo -e "    # ./resize-img A example.img"
+	echo -e ""
+	return 0
+}
+
+log_msg() {
+	local msg=${1}
+
+	echo -ne "\e[1;33m[resize-img]\e[0m "
+	echo "${msg}"
+	return 0
+}
+
+reset_image() {
+	local image_type=${1}
+	local mnt_dir=${2}
+
+	if [ "${image_type}" == "A" ]; then
+		if [ -f "${mnt_dir}/p2/sbin/expand2fs.bak" ]; then
+			mv ${mnt_dir}/p2/sbin/expand2fs.bak ${mnt_dir}/p2/sbin/expand2fs
+		fi
+	else
+		rm -f ${mnt_dir}/p3/v1/sbin_rw/upper/expand2fs.bak
+		rm -f ${mnt_dir}/p3/v1/sbin_rw/upper/expand2fs
+	fi
+
+	return 0
+}
+
+resize_image() {
+	local image_type=${1}
+	local image=${2}
+	local p1_size=32
+	local p2_size
+	local p3_size
+
+	if ! [ -f "${image}" ]; then
+		echo "image not found: ${image}" >&2
+		return 2
+	fi
+
+	log_msg "Mounting original image"
+	./mount-img mount "${image}" "${ORI_MNT_DIR}"
+
+	log_msg "Calculating original image's partitions size"
+	p2_size="$(du -s -BM "${ORI_MNT_DIR}/p2/")"
+	p2_size="${p2_size%%M*}"
+	p3_size="$(du -s -BM "${ORI_MNT_DIR}/p3/")"
+	p3_size="${p3_size%%M*}"
+
+	p2_size="$(( p2_size + p2_size / 5 ))"
+	if [ "${image_type}" == "B" ]; then
+		p3_size="$(( p3_size + p3_size / 5 ))"
+	fi
+	p3_size="$(( p3_size + 32 ))"
+
+	log_msg "Creating new image"
+	if [ "${image_type}" == "A" ]; then
+		./create-img "${RES_IMAGE_NAME}" "1,${p1_size},y,b,vfat" "3,${p3_size},n,83,ext4" "2,${p2_size},n,83,ext4"
+	else
+		./create-img "${RES_IMAGE_NAME}" "1,${p1_size},y,b,vfat" "2,${p2_size},n,83,ext4" "3,${p3_size},n,83,ext4"
+	fi
+
+	log_msg "Mounting new image"
+	./mount-img mount "${RES_IMAGE_NAME}" "${RES_MNT_DIR}"
+
+	log_msg "Copying files"
+	cp -a ${ORI_MNT_DIR}/p1/* ${RES_MNT_DIR}/p1/
+	cp -a ${ORI_MNT_DIR}/p2/* ${RES_MNT_DIR}/p2/
+	cp -a ${ORI_MNT_DIR}/p3/* ${RES_MNT_DIR}/p3/
+
+	log_msg "Unmounting original image"
+	./mount-img umount "${ORI_MNT_DIR}"
+
+	log_msg "Resetting image"
+	reset_image "${image_type}" "${RES_MNT_DIR}"
+
+	log_msg "Unmounting new image"
+	./mount-img umount "${RES_MNT_DIR}"
+
+	log_msg "OK"
+	return 0
+}
+
+main() {
+	local option1=${1}
+	local image=${2}
+	local image_type="B"
+
+	case "${option1}" in
+	"-v"|"--version")
+		echo "${VERSION}"
+		;;
+	"a"|"A")
+		image_type="A"
+		;&
+	"b"|"B")
+		if [ $# -ne 2 ]; then
+			usage >&2
+			return 1
+		fi
+
+		resize_image "${image_type}" "${image}"
+		;;
+	*)
+		usage >&2
+		return 1
+		;;
+	esac
+
+	return 0
+}
+
+if [ "${EUID}" -ne 0 ]; then
+	echo "Please run as root" >&2
 	exit 1
 fi
 
-if ! [ -f "$ORIG_IMAGE_NAME" ]; then
-	printf "image not found: %s\n" "$ORIG_IMAGE_NAME" >&2
-	exit 2
-fi
-
-cd orig
-echo "***** Mount the orig image file *****"
-./mount-img mount ${ORIG_IMAGE_NAME} ${FOLDER}
-
-cd ../resize
-echo "***** Create a new resize image file. Please wait for a few minutes... *****"
-./create-img "${RESIZE_IMAGE_NAME}" "${RESIZE_IMAGE_SIZE}" "${RESIZE_P2_SIZE}"
-
-echo "***** Mount the new image file *****"
-./mount-img mount ${RESIZE_IMAGE_NAME} ${FOLDER}
-
-cd ../
-
-echo "***** Copy the whole RFS from orig image to new resize image. (p1)... *****"
-cp -a orig/${FOLDER}/p1/* resize/${FOLDER}/p1/
-echo "***** Copy the whole RFS from orig image to new resize image. (p2)... Please wait for a few minutes... *****"
-cp -a orig/${FOLDER}/p2/* resize/${FOLDER}/p2/
-echo "***** Copy the whole RFS from orig image to new resize image. (p3)... *****"
-cp -a orig/${FOLDER}/p3/* resize/${FOLDER}/p3/
-
-# Remove expand2fs file to make sure the initial script will be triggered.
-rm -f resize/${FOLDER}/p3/v1/sbin_rw/upper/expand2fs.bak
-rm -f resize/${FOLDER}/p3/v1/sbin_rw/upper/expand2fs
-
-cd orig
-echo "***** umount the orig image file *****"
-./mount-img umount ${ORIG_IMAGE_NAME} ${FOLDER}
-
-cd ../resize
-echo "***** umount the new resize image file *****"
-./mount-img umount ${RESIZE_IMAGE_NAME} ${FOLDER}
-
-echo "***** Complete!!! *****"
+main "$@"
+exit 0
