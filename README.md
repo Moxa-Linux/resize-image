@@ -50,6 +50,13 @@ The output image file will be named as "resize.img"
 ## Image type table
 
 * Type A
+	* UC-8100-LX series:
+
+		including UC-8131-LX, UC-8132-LX, UC-8162-LX, UC-8112-LX, UC-8112-LX1
+	* UC-8100-ME-T-LX series:
+
+		including UC-8112-ME-T-LX, UC-8112-ME-T-LX1, UC-8112-ME-T-LX-US-LTE, UC-8112-ME-T-US-LTE-LX1
+* Type B
 	* UC-2100 series:
 
 		including UC-2101-LX, UC-2102-LX, UC-2104-LX, UC-2111-LX, UC-2112-LX, UC-2112-T-LX
@@ -59,10 +66,3 @@ The output image file will be named as "resize.img"
 	* UC-5100 series:
 
 		including UC-5101-LX, UC-5101-T-LX, UC-5102-LX, UC-5102-T-LX, UC-5111-LX, UC-5111-T-LX, UC-5112-LX, UC-5112-T-LX
-* Type B
-	* UC-8100-LX series:
-
-		including UC-8131-LX, UC-8132-LX, UC-8162-LX, UC-8112-LX, UC-8112-LX1
-	* UC-8100-ME-T-LX series:
-
-		including UC-8112-ME-T-LX, UC-8112-ME-T-LX1, UC-8112-ME-T-LX-US-LTE, UC-8112-ME-T-US-LTE-LX1
