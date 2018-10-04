@@ -10,7 +10,7 @@ Moxa image resize utility is used to shrink the dumped image file size.
 
 ---
 
-## Steps of making a customed image
+## Steps to create a customized Image
 
 Here we take UC-8100 as illustration:
 
