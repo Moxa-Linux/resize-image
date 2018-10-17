@@ -83,7 +83,7 @@ resize_image() {
 	p3_size="$(du -s -BM "${ORI_MNT_DIR}/p3/")"
 	p3_size="${p3_size%%M*}"
 
-	p2_size="$(( p2_size + p2_size / 5 ))"
+	p2_size="$(( p2_size + p2_size / 4 ))"
 	if [ "${image_type}" == "B" ]; then
 		p3_size="$(( p3_size + p3_size / 5 ))"
 	fi
