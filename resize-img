@@ -96,6 +96,8 @@ resize_image() {
 		./create-img "${RES_IMAGE_NAME}" "1,${p1_size},y,b,vfat" "2,${p2_size},n,83,ext4" "3,${p3_size},n,83,ext4"
 	fi
 
+	sync
+
 	log_msg "Mounting new image"
 	./mount-img mount "${RES_IMAGE_NAME}" "${RES_MNT_DIR}"
 
