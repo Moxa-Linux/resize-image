@@ -58,7 +58,7 @@ mount_img() {
 		exit 2
 	fi
 
-	part_info="$(fdisk -l "$img" | grep "${img}[0-9]" | sed 's/*//')"
+	part_info="$(fdisk -l "$img" | grep -E "${img}(|p)[0-9]" | sed 's/*//')"
 	part_count="$(echo "$part_info" | wc -l)"
 
 	mkdir -p $mnt_dir
