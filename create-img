@@ -88,12 +88,17 @@ is_valid_partition_type() {
 
 is_valid_fs_type() {
 	local fs_type=${1}
+	# Currently we only support raw, vfat and ext4
+	local fs_support_list="raw vfat ext4"
+	local i
+	for i in ${fs_support_list}
+	do
+		if [ "${fs_type}" == "${i}" ]; then
+			return 0
+		fi
+	done
 
-	if [ "${fs_type}" != "vfat" ] && [ "${fs_type}" != "ext4" ]; then
-		return 1
-	else
-		return 0
-	fi
+	return 1
 }
 
 extract_information() {
@@ -206,10 +211,13 @@ format_partitions() {
 		mknod "${part_dev}" b 7 ${part_minor}
 		losetup -o ${offset} --sizelimit ${size} ${part_dev} ${loopdev}
 
-		if [ ${part} -eq ${part_count} ]; then
-			mkfs -t ${fs_type} -J size=8 ${part_dev}
-		else
-			mkfs -t ${fs_type} ${part_dev}
+		# For fs_type is raw, no need to perform formation
+		if [ "${fs_type}" != "raw" ]; then
+			if [ ${part} -eq ${part_count} ]; then
+				mkfs -t ${fs_type} -J size=8 ${part_dev}
+			else
+				mkfs -t ${fs_type} ${part_dev}
+			fi
 		fi
 
 		losetup -d ${part_dev}

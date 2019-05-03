@@ -75,7 +75,19 @@ mount_img() {
 	echo ${lodev_minor} > ${mnt_dir}/.mountnum
 
 	for part in $(seq 1 ${part_count}); do
+
 		local part_name=${img}${part}
+
+		# Disk type could be 'W95 FAT32', if someone wants to do
+		# some stuff with type containing spaces, he may like to
+		# select $7 along with $8.
+		# Here we are interested in type 'Empty'. Use $7 is fine.
+		local fs_type=$(echo "$part_info" | grep "$part_name" | awk '{print $7}')
+		if [ "${fs_type}" == "Empty" ]; then
+			# For Empty disk type, do nothing.
+			continue
+		fi
+
 		local part_dev=${loopdev}p${part}
 		local part_minor=${lodev_minor}${part}
 		local mnt_point=${mnt_dir}/p${part}
@@ -101,7 +113,6 @@ unmount_img() {
 	local mnt_dir=${1}
 	local lodev_minor
 	local loopdev
-	local part_count
 
 	if [ -f ${mnt_dir}/.mountnum ]; then
 		lodev_minor=$(cat ${mnt_dir}/.mountnum)
@@ -111,10 +122,14 @@ unmount_img() {
 		return 1
 	fi
 
-	part_count=$(ls ${mnt_dir} | grep "p[0-9]" | wc -l)
+	# Since we now may have partition that is Empty type, we are
+	# not able to assume all the partition is mounted in a row.
+	# Need to pay attention to each one mounted.
+	# Contents in parts may be: "p1 p2 p3" or "p1 p3" or ...
+	parts="$(ls ${mnt_dir} | grep "p[0-9]")"
 
-	for part in $(seq 1 ${part_count}); do
-		local part_dev=${loopdev}p${part}
+	for part in $parts; do
+		local part_dev=${loopdev}${part}
 
 		umount "$part_dev"
 		losetup -d "$part_dev"
@@ -126,8 +141,10 @@ unmount_img() {
 
 	rm -rf "$mnt_dir"
 
-	for num in $(seq 0 ${part_count}); do
-		rm -f /dev/loop${lodev_minor}${num}
+	# The number position of partition can be represented as
+	# ${part#p}
+	for part in $parts; do
+		rm -f /dev/loop${lodev_minor}${part#p}
 	done
 
 	return 0
