@@ -91,8 +91,7 @@ is_valid_fs_type() {
 	# Currently we only support raw, vfat and ext4
 	local fs_support_list="raw vfat ext4"
 	local i
-	for i in ${fs_support_list}
-	do
+	for i in ${fs_support_list}; do
 		if [ "${fs_type}" == "${i}" ]; then
 			return 0
 		fi
