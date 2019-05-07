@@ -52,6 +52,7 @@ mount_img() {
 	local loopdev
 	local part_info
 	local part_count
+	local part
 
 	if ! [ -f "$img" ]; then
 		echo "image file not found: ${img}" >&2
@@ -113,6 +114,8 @@ unmount_img() {
 	local mnt_dir=${1}
 	local lodev_minor
 	local loopdev
+	local parts
+	local part
 
 	if [ -f ${mnt_dir}/.mountnum ]; then
 		lodev_minor=$(cat ${mnt_dir}/.mountnum)
