@@ -104,7 +104,7 @@ mount_img() {
 			continue
 		fi
 		# mount it
-		mount "$part_dev" "$mnt_point"
+		mount "$part_dev" "$mnt_point" || true
 	done
 	
 	return 0
