@@ -84,10 +84,6 @@ mount_img() {
 		# select $7 along with $8.
 		# Here we are interested in type 'Empty'. Use $7 is fine.
 		local fs_type=$(echo "$part_info" | grep "$part_name" | awk '{print $7}')
-		if [ "${fs_type}" == "Empty" ]; then
-			# For Empty disk type, do nothing.
-			continue
-		fi
 
 		local part_dev=${loopdev}p${part}
 		local part_minor=${lodev_minor}${part}
@@ -103,6 +99,10 @@ mount_img() {
 
 		losetup -o ${offset} --sizelimit ${size} ${part_dev} ${loopdev}
 
+		if [ "${fs_type}" == "Empty" ]; then
+			# For Empty disk type, do nothing.
+			continue
+		fi
 		# mount it
 		mount "$part_dev" "$mnt_point"
 	done
