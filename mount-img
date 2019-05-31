@@ -159,7 +159,6 @@ unmount_img() {
 	# The number position of partition can be represented as
 	# ${part#p}
 	for part in p0 $parts; do
-		echo "rm -f /dev/loop${lodev_minor}${part#p}"
 		rm -f /dev/loop${lodev_minor}${part#p}
 	done
 
