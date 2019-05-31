@@ -110,14 +110,6 @@ mount_img() {
 	return 0
 }
 
-is_mount () {
-	if mount -l | grep -q ${1}; then
-		return 0
-	else
-		return 1
-	fi
-}
-
 unmount_img() {
 	local mnt_dir=${1}
 	local lodev_minor
@@ -141,13 +133,14 @@ unmount_img() {
 
 	for part in $parts; do
 		local part_dev=${loopdev}${part}
-		if is_mount "${part_dev}"; then
-			umount "$part_dev" || true
+		local part_folder=${mnt_dir}/${part}
+		if mountpoint -q "${part_folder}"; then
+			umount "${part_folder}" || true
 		else
-			echo "${part_dev} not mount. Ignore ..."
+			echo "${part_folder} not mount. Ignore ..."
 		fi
-		losetup -d "$part_dev"
-		rm "$part_dev"
+		losetup -d "${part_dev}"
+		rm "${part_dev}"
 	done
 
 	losetup -d ${loopdev}
