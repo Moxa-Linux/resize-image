@@ -237,6 +237,11 @@ main() {
 	fi
 	shift 1
 
+	if [ -f ${image} ]; then
+		echo "Error: file \"${image}\" already exist" >&2
+		return 1
+	fi
+
 	log_msg "Extract information from options"
 	p_info="$(extract_information "$@")"
 	num_of_partitions="$(echo "${p_info}" | grep "^Num_of_Partitions:" | awk '{print $2}')"
