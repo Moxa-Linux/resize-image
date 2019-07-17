@@ -40,121 +40,127 @@ usage() {
 	return 0
 }
 
-random_minor_number() {
-	echo "$((100 + RANDOM % 801))"
+get_value() {
+	local tmp
+	tmp="$(echo "${1}" | grep "^${2}=")"
+	echo "${tmp##*=}"
 	return 0
+}
+
+get_image_info() {
+	local imgfile=${1}
+	local fdisk_l_output sec_size num_part part_info
+	local line count tmp
+
+	echo "IMAGE_FILE=${imgfile}"
+	echo "IMAGE_FILENAME=${imgfile##*/}"
+
+	fdisk_l_output="$(fdisk -l ${imgfile})"
+
+	# get sector size
+	sec_size="$(echo "${fdisk_l_output}" | grep "^Units:")"
+	sec_size="${sec_size##*= }"
+	sec_size="${sec_size%% bytes}"
+	echo "IMAGE_SECTOR_SIZE=${sec_size}"
+
+	# get partition information
+	part_info="$(echo "${fdisk_l_output}" | grep "^${imgfile}[0-9]")"
+	num_part=$(echo "${part_info}" | wc -l)
+	echo "IMAGE_NUM_OF_PARTITIONS=${num_part}"
+
+	count=0
+	while read -r line; do
+		count=$((count + 1))
+		# bootflag is set if the line contains '*'
+		if echo "${line}" | grep -q "*"; then
+			line="$(echo "${line}" | sed 's/*//')"
+			echo "IMAGE_P${count}_BOOTFLAG=y"
+		else
+			echo "IMAGE_P${count}_BOOTFLAG=n"
+		fi
+		tmp="$(echo "${line}" | awk '{print $1}')"
+		echo "IMAGE_P${count}_NUMBER=${tmp##*${imgfile}}"
+		tmp="$(echo "${line}" | awk '{print $2}')"
+		echo "IMAGE_P${count}_OFFSET=$((tmp * sec_size))"
+		tmp="$(echo "${line}" | awk '{print $4}')"
+		echo "IMAGE_P${count}_SIZE=$((tmp * sec_size))"
+		tmp="$(echo "${line}" | awk '{print $6}')"
+		echo "IMAGE_P${count}_FSTYPE=${tmp}"
+	done <<< "${part_info}"
+	return 0
+}
+
+get_device_for_mountpoint() {
+	local mnt_point=${1}
+	local src tgt
+
+	while read -r src tgt; do
+		if [ "${tgt}" == "${mnt_point}" ]; then
+			echo "${src}"
+			return 0
+		fi
+	done <<< "$(df --output=source,target)"
+	echo "Error: \"${mnt_point}\" is not a mount point"
+	return 1
 }
 
 mount_img() {
 	local img=${1}
 	local mnt_dir=${2}
-	local lodev_minor
-	local loopdev
-	local part_info
-	local part_count
-	local part
+	local img_info i n_part
 
-	if ! [ -f "$img" ]; then
+	if ! [ -f "${img}" ]; then
 		echo "image file not found: ${img}" >&2
 		exit 2
 	fi
+	img_info="$(get_image_info "${img}")"
 
-	part_info="$(fdisk -l "$img" | grep -E "${img}(|p)[0-9]" | sed 's/*//')"
-	part_count="$(echo "$part_info" | wc -l)"
+	mkdir -p ${mnt_dir}
+	if [ -n "$(ls -A ${mnt_dir})" ]; then
+		echo "Error: target directory is not empty" >&2
+		exit 2
+	fi
 
-	mkdir -p $mnt_dir
+	n_part=$(get_value "${img_info}" "IMAGE_NUM_OF_PARTITIONS")
+	for i in $(seq 1 ${n_part}); do
+		local p_no=$(get_value "${img_info}" "IMAGE_P${i}_NUMBER")
+		local p_offset=$(get_value "${img_info}" "IMAGE_P${i}_OFFSET")
+		local p_size=$(get_value "${img_info}" "IMAGE_P${i}_SIZE")
+		local mnt_point=${mnt_dir}/p${p_no}
+		local loopdev
 
-	lodev_minor=$(random_minor_number)
-	loopdev=/dev/loopimg${lodev_minor}
-	while [ -e "$loopdev" ]; do
-		lodev_minor=$(random_minor_number)
-		loopdev=/dev/loopimg${lodev_minor}
-	done
+		loopdev="$(losetup -f)"
+		losetup -o ${p_offset} --sizelimit ${p_size} ${loopdev} ${img}
 
-	mknod "$loopdev" b 7 ${lodev_minor}0
-	losetup ${loopdev} ${img}
-	echo ${lodev_minor} > ${mnt_dir}/.mountnum
-
-	for part in $(seq 1 ${part_count}); do
-
-		local part_name=${img}${part}
-
-		# Disk type could be 'W95 FAT32', if someone wants to do
-		# some stuff with type containing spaces, he may like to
-		# select $7 along with $8.
-		# Here we are interested in type 'Empty'. Use $7 is fine.
-		local fs_type=$(echo "$part_info" | grep "$part_name" | awk '{print $7}')
-
-		local part_dev=${loopdev}p${part}
-		local part_minor=${lodev_minor}${part}
-		local mnt_point=${mnt_dir}/p${part}
-
-		[ -e "$part_dev" ] || mknod "$part_dev" b 7 $part_minor
-		mkdir -p "$mnt_point"
-
-		local pstart=$(echo "$part_info" | grep "$part_name" | awk '{print $2}')
-		local pend=$(echo "$part_info" | grep "$part_name" | awk '{print $3}')
-		local offset=$((pstart * 512))
-		local size=$(( pend * 512 - pstart * 512 + 512))
-
-		losetup -o ${offset} --sizelimit ${size} ${part_dev} ${loopdev}
-
-		if [ "${fs_type}" == "Empty" ]; then
-			# For Empty disk type, do nothing.
-			continue
+		# do nothing for Empty disk type
+		if [ "${part_type}" != "0" ]; then
+			mkdir -p "${mnt_point}"
+			mount "${loopdev}" "${mnt_point}" || true
 		fi
-		# mount it
-		mount "$part_dev" "$mnt_point" || true
 	done
-	
 	return 0
 }
 
 unmount_img() {
 	local mnt_dir=${1}
-	local lodev_minor
-	local loopdev
-	local parts
-	local part
+	local part_mnt loopdev
 
-	if [ -f ${mnt_dir}/.mountnum ]; then
-		lodev_minor=$(cat ${mnt_dir}/.mountnum)
-		loopdev=/dev/loopimg${lodev_minor}
-	else
-		echo "Can not found .mountnum. Terminate for safe" >&2
-		return 1
+	if ! [ -d "${mnt_dir}" ]; then
+		echo "directory not exist: ${mnt_dir}" >&2
+		exit 2
 	fi
+	mnt_dir="$(realpath ${mnt_dir})"
 
-	# Since we now may have partition that is Empty type, we are
-	# not able to assume all the partition is mounted in a row.
-	# Need to pay attention to each one mounted.
-	# Contents in parts may be: "p1 p2 p3" or "p1 p3" or ...
-	parts="$(ls ${mnt_dir} | grep "p[0-9]")"
-
-	for part in $parts; do
-		local part_dev=${loopdev}${part}
-		local part_folder=${mnt_dir}/${part}
-		if mountpoint -q "${part_folder}"; then
-			umount "${part_folder}" || true
+	for part_mnt in ${mnt_dir}/*; do
+		if mountpoint -q ${part_mnt}; then
+			loopdev="$(get_device_for_mountpoint "${part_mnt}")"
+			umount "${part_mnt}" || true
+			losetup -d ${loopdev}
 		else
-			echo "${part_folder} not mount. Ignore ..."
+			echo "Warning: a non-mountpoint found \"${part_mnt}\"" >&2
 		fi
-		losetup -d "${part_dev}"
-		rm "${part_dev}"
 	done
-
-	losetup -d ${loopdev}
-	rm "${loopdev}"
-
-	rm -rf "$mnt_dir"
-
-	echo "Clean up loop devices ..."
-	# The number position of partition can be represented as
-	# ${part#p}
-	for part in p0 $parts; do
-		rm -f /dev/loop${lodev_minor}${part#p}
-	done
-
+	rm -rf ${mnt_dir}
 	return 0
 }
 
@@ -194,4 +200,3 @@ fi
 
 main "$@"
 exit 0
-
