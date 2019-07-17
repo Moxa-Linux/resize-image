@@ -92,6 +92,56 @@ is_valid_fs_type() {
 	return 1
 }
 
+get_value() {
+	local tmp
+	tmp="$(echo "${1}" | grep "^${2}=")"
+	echo "${tmp##*=}"
+	return 0
+}
+
+get_image_info() {
+	local imgfile=${1}
+	local fdisk_l_output sec_size num_part part_info
+	local line count tmp
+
+	echo "IMAGE_FILE=${imgfile}"
+	echo "IMAGE_FILENAME=${imgfile##*/}"
+
+	fdisk_l_output="$(fdisk -l ${imgfile})"
+
+	# get sector size
+	sec_size="$(echo "${fdisk_l_output}" | grep "^Units:")"
+	sec_size="${sec_size##*= }"
+	sec_size="${sec_size%% bytes}"
+	echo "IMAGE_SECTOR_SIZE=${sec_size}"
+
+	# get partition information
+	part_info="$(echo "${fdisk_l_output}" | grep "^${imgfile}[0-9]")"
+	num_part=$(echo "${part_info}" | wc -l)
+	echo "IMAGE_NUM_OF_PARTITIONS=${num_part}"
+
+	count=0
+	while read -r line; do
+		count=$((count + 1))
+		# bootflag is set if the line contains '*'
+		if echo "${line}" | grep -q "*"; then
+			line="$(echo "${line}" | sed 's/*//')"
+			echo "IMAGE_P${count}_BOOTFLAG=y"
+		else
+			echo "IMAGE_P${count}_BOOTFLAG=n"
+		fi
+		tmp="$(echo "${line}" | awk '{print $1}')"
+		echo "IMAGE_P${count}_NUMBER=${tmp##*${imgfile}}"
+		tmp="$(echo "${line}" | awk '{print $2}')"
+		echo "IMAGE_P${count}_OFFSET=$((tmp * sec_size))"
+		tmp="$(echo "${line}" | awk '{print $4}')"
+		echo "IMAGE_P${count}_SIZE=$((tmp * sec_size))"
+		tmp="$(echo "${line}" | awk '{print $6}')"
+		echo "IMAGE_P${count}_FSTYPE=${tmp}"
+	done <<< "${part_info}"
+	return 0
+}
+
 extract_information() {
 	local num_of_partitions
 	local img_size=0
@@ -161,66 +211,35 @@ extract_information() {
 	return 0
 }
 
-random_minor_number() {
-	echo "$((100 + RANDOM % 801))"
-	return 0
-}
-
 format_partitions() {
-	local image=${1}
-	local lodev_minor
-	local loopdev
-	local part_info
-	local part_count
+	local img=${1}
+	local img_info i n_part
 
 	shift 1
-	part_info="$(fdisk -l "${image}" | grep "^${image}" | sed 's/*//')"
-	part_count="$(echo "$part_info" | wc -l)"
+	img_info="$(get_image_info "${img}")"
 
-	lodev_minor=$(random_minor_number)
-	loopdev=/dev/loopimg${lodev_minor}
-	while [ -e "${loopdev}" ]; do
-		lodev_minor=$(random_minor_number)
-		loopdev=/dev/loopimg${lodev_minor}
-	done
-
-	mknod ${loopdev} b 7 ${lodev_minor}0
-	losetup ${loopdev} ${image}
-
-	for part in $(seq 1 ${part_count}); do
+	n_part=$(get_value "${img_info}" "IMAGE_NUM_OF_PARTITIONS")
+	for i in $(seq 1 ${n_part}); do
 		# "<part_no>,<part_size>,<boot_flag>,<part_type>,<fs_type>"
-		local fs_type="$(echo "${!part}" | awk -F, '{print $5}')"
-		local part_name=${image}${part}
-		local part_dev=${loopdev}p${part}
-		local part_minor=${lodev_minor}${part}
+		local fs_type="$(echo "${!i}" | awk -F, '{print $5}')"
+		local p_offset=$(get_value "${img_info}" "IMAGE_P${i}_OFFSET")
+		local p_size=$(get_value "${img_info}" "IMAGE_P${i}_SIZE")
+		local loopdev
 
-		local pstart=$(echo "${part_info}" | grep "${part_name}" | awk '{print $2}')
-		local pend=$(echo "${part_info}" | grep "${part_name}" | awk '{print $3}')
-		local offset=$((pstart * 512))
-		local size=$(( pend * 512 - pstart * 512 + 512))
-
-		mknod "${part_dev}" b 7 ${part_minor}
-		losetup -o ${offset} --sizelimit ${size} ${part_dev} ${loopdev}
+		loopdev="$(losetup -f)"
+		losetup -o ${p_offset} --sizelimit ${p_size} ${loopdev} ${img}
 
 		# Perform formation for different fs_type
 		#   vfat: format
 		#   ext4: format with journal
 		#   raw: do nothing
 		if [ "${fs_type}" == "ext4" ]; then
-			mkfs -t ${fs_type} -J size=8 ${part_dev} >/dev/null 2>&1
+			mkfs -t ${fs_type} -J size=8 ${loopdev} >/dev/null 2>&1
 		elif [ "${fs_type}" == "vfat" ]; then
-			mkfs -t ${fs_type} ${part_dev} >/dev/null
+			mkfs -t ${fs_type} ${loopdev} >/dev/null
 		fi
 
-		losetup -d ${part_dev}
-		rm -f ${part_dev}
-	done
-
-	losetup -d ${loopdev}
-	rm -f ${loopdev}
-
-	for i in $(seq 0 ${part_count}); do
-		rm -f /dev/loop${lodev_minor}${i}
+		losetup -d ${loopdev}
 	done
 	return 0
 }
