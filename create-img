@@ -17,14 +17,6 @@ set -e
 VERSION=1.2.0
 
 usage() {
-	echo -e "Usage: ${0} <image_file> <partition1_options> [<partition2_options> ...]"
-	echo -e ""
-	echo -e "\tPartition options:"
-	echo -e ""
-	echo -e "\tExamples:"
-}
-
-usage() {
 	echo -e "Usage:"
 	echo -e "  # ${0} <image_file> <partition_options1> [<partition_options2> ...]"
 	echo -e ""
