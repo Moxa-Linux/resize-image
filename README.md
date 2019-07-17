@@ -68,3 +68,6 @@ The output image file will be named as "resize.img"
 	* UC-5100 series:
 
 		including UC-5101-LX, UC-5101-T-LX, UC-5102-LX, UC-5102-T-LX, UC-5111-LX, UC-5111-T-LX, UC-5112-LX, UC-5112-T-LX
+	* UC-8100A-ME series:
+
+		including UC-8112A-ME-T-LX, UC-8112A-ME-T-US, UC-8112A-ME-T-EU, UC-8112A-ME-T-AP
