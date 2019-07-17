@@ -202,13 +202,14 @@ format_partitions() {
 		mknod "${part_dev}" b 7 ${part_minor}
 		losetup -o ${offset} --sizelimit ${size} ${part_dev} ${loopdev}
 
-		# For fs_type is raw, no need to perform formation
-		if [ "${fs_type}" != "raw" ]; then
-			if [ ${part} -eq ${part_count} ]; then
-				mkfs -t ${fs_type} -J size=8 ${part_dev}
-			else
-				mkfs -t ${fs_type} ${part_dev}
-			fi
+		# Perform formation for different fs_type
+		#   vfat: format
+		#   ext4: format with journal
+		#   raw: do nothing
+		if [ "${fs_type}" == "ext4" ]; then
+			mkfs -t ${fs_type} -J size=8 ${part_dev} >/dev/null 2>&1
+		elif [ "${fs_type}" == "vfat" ]; then
+			mkfs -t ${fs_type} ${part_dev} >/dev/null
 		fi
 
 		losetup -d ${part_dev}
@@ -252,7 +253,7 @@ main() {
 	truncate -s $((img_size * 1024 * 1024)) ${image}
 
 	log_msg "Creating partitions"
-	echo -ne "${fdisk_cmd}" | fdisk "${image}"
+	echo -ne "${fdisk_cmd}" | fdisk "${image}" >/dev/null
 
 	log_msg "Formating partitions"
 	format_partitions "${image}" "$@"
