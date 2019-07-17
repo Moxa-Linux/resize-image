@@ -249,7 +249,7 @@ main() {
 	fdisk_cmd="$(echo "${p_info}" | grep "^Fdisk_Command:" | awk '{print $2}')"
 
 	log_msg "Generating image file"
-	dd if=/dev/zero of=${image} bs=1M count=${img_size}
+	truncate -s $((img_size * 1024 * 1024)) ${image}
 
 	log_msg "Creating partitions"
 	echo -ne "${fdisk_cmd}" | fdisk "${image}"
