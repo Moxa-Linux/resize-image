@@ -24,7 +24,7 @@ usage() {
 	echo -e ""
 	echo -e "Parameters:"
 	echo -e "  image_type"
-	echo -e "    Image type must be A or B"
+	echo -e "    Image type must be A, B or C"
 	echo -e "    Further informationcan be found at README"
 	echo -e ""
 	echo -e "  image_file"
@@ -84,7 +84,7 @@ resize_image() {
 	p3_size="${p3_size%%M*}"
 
 	p2_size="$(( p2_size + p2_size / 5 ))"
-	if [ "${image_type}" == "B" ]; then
+	if [ "${image_type}" == "B" ] || [ "${image_type}" == "C" ]; then
 		p3_size="$(( p3_size + p3_size / 5 ))"
 	fi
 	p3_size="$(( p3_size + 32 ))"
@@ -92,8 +92,10 @@ resize_image() {
 	log_msg "Creating new image"
 	if [ "${image_type}" == "A" ]; then
 		./create-img "${RES_IMAGE_NAME}" "1,${p1_size},y,b,vfat" "3,${p3_size},n,83,ext4" "2,${p2_size},n,83,ext4"
-	else
+	elif [ "${image_type}" == "B" ]; then
 		./create-img "${RES_IMAGE_NAME}" "1,${p1_size},y,b,vfat" "2,${p2_size},n,83,ext4" "3,${p3_size},n,83,ext4"
+	else
+		./create-img "${RES_IMAGE_NAME}" "1,${p1_size},y,83,ext4" "2,${p2_size},n,83,ext4" "3,${p3_size},n,83,ext4"
 	fi
 
 	log_msg "Mounting new image"
@@ -120,21 +122,19 @@ resize_image() {
 main() {
 	local option1=${1}
 	local image=${2}
-	local image_type="B"
+	local image_type
 
 	case "${option1}" in
 	"-v"|"--version")
 		echo "${VERSION}"
 		;;
-	"a"|"A")
-		image_type="A"
-		;&
-	"b"|"B")
+	"a"|"A"|"b"|"B"|"c"|"C")
 		if [ $# -ne 2 ]; then
 			usage >&2
 			return 1
 		fi
 
+		image_type="${option1^^}"
 		resize_image "${image_type}" "${image}"
 		;;
 	*)
