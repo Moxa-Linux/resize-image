@@ -205,9 +205,9 @@ extract_information() {
 	done
 	fdisk_cmd="${fdisk_cmd}w\n"
 
-	echo "Num_of_Partitions: ${num_of_partitions}"
-	echo "Image_Size: ${img_size}"
-	echo "Fdisk_Command: ${fdisk_cmd}"
+	echo "Num_of_Partitions=${num_of_partitions}"
+	echo "Image_Size=${img_size}"
+	echo "Fdisk_Command=${fdisk_cmd}"
 	return 0
 }
 
@@ -246,10 +246,7 @@ format_partitions() {
 
 main() {
 	local image=${1}
-	local p_info
-	local num_of_partitions
-	local img_size
-	local fdisk_cmd
+	local extracted_info img_size fdisk_cmd
 
 	if [ "${image}" == "-v" ] || [ "${image}" == "--version" ]; then
 		echo "${VERSION}"
@@ -263,10 +260,9 @@ main() {
 	fi
 
 	log_msg "Extract information from options"
-	p_info="$(extract_information "$@")"
-	num_of_partitions="$(echo "${p_info}" | grep "^Num_of_Partitions:" | awk '{print $2}')"
-	img_size="$(echo "${p_info}" | grep "^Image_Size:" | awk '{print $2}')"
-	fdisk_cmd="$(echo "${p_info}" | grep "^Fdisk_Command:" | awk '{print $2}')"
+	extracted_info="$(extract_information "$@")"
+	img_size="$(get_value "${extracted_info}" "Image_Size")"
+	fdisk_cmd="$(get_value "${extracted_info}" "Fdisk_Command")"
 
 	log_msg "Generating image file"
 	truncate -s $((img_size * 1024 * 1024)) ${image}
