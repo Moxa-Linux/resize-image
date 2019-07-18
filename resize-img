@@ -8,12 +8,12 @@
 #
 # Authors:
 #	2018	Wes Huang	<Wes.Huang@moxa.com>
-#	2018	Ken CJ Chou	<KenCJ.Chou@moxa.com>
+#	2019	Ken CJ Chou	<KenCJ.Chou@moxa.com>
 #
 
 set -e
 
-VERSION=1.0.0
+VERSION=1.1.0
 ORI_MNT_DIR="/tmp/original_mnt"
 RES_MNT_DIR="/tmp/resized_mnt"
 RES_IMAGE_NAME="resize.img"
