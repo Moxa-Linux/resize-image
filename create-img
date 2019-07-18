@@ -9,12 +9,12 @@
 # Authors:
 #	2017	Zack YL Shih	<ZackYL.Shih@moxa.com>
 #	2018	Fero JD Zhou	<FeroJD.Zhou@moxa.com>
-#	2018	Ken CJ Chou	<KenCJ.Chou@moxa.com>
+#	2019	Ken CJ Chou	<KenCJ.Chou@moxa.com>
 #
 
 set -e
 
-VERSION=1.2.0
+VERSION=1.3.0
 
 usage() {
 	echo -e "Usage:"
