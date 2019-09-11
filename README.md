@@ -86,3 +86,7 @@ The output image file will be named as "resize.img"
 	* UC-8100A-ME series:
 
 		including UC-8112A-ME-T-LX, UC-8112A-ME-T-US, UC-8112A-ME-T-EU, UC-8112A-ME-T-AP
+* Type C
+	* UC-8200 series:
+
+		including UC-8210-T-LX, UC-8210-T-LX-S, UC-8220-T-LX, UC-8220-T-LX-US-S ,UC-8220-T-LX-EU-S ,UC-8220-T-LX-AP-S

@@ -9,20 +9,12 @@
 # Authors:
 #	2017	Zack YL Shih	<ZackYL.Shih@moxa.com>
 #	2018	Fero JD Zhou	<FeroJD.Zhou@moxa.com>
-#	2018	Ken CJ Chou	<KenCJ.Chou@moxa.com>
+#	2019	Ken CJ Chou	<KenCJ.Chou@moxa.com>
 #
 
 set -e
 
-VERSION=1.2.0
-
-usage() {
-	echo -e "Usage: ${0} <image_file> <partition1_options> [<partition2_options> ...]"
-	echo -e ""
-	echo -e "\tPartition options:"
-	echo -e ""
-	echo -e "\tExamples:"
-}
+VERSION=1.3.0
 
 usage() {
 	echo -e "Usage:"
@@ -100,6 +92,56 @@ is_valid_fs_type() {
 	return 1
 }
 
+get_value() {
+	local tmp
+	tmp="$(echo "${1}" | grep "^${2}=")"
+	echo "${tmp##*=}"
+	return 0
+}
+
+get_image_info() {
+	local imgfile=${1}
+	local fdisk_l_output sec_size num_part part_info
+	local line count tmp
+
+	echo "IMAGE_FILE=${imgfile}"
+	echo "IMAGE_FILENAME=${imgfile##*/}"
+
+	fdisk_l_output="$(fdisk -l ${imgfile})"
+
+	# get sector size
+	sec_size="$(echo "${fdisk_l_output}" | grep "^Units:")"
+	sec_size="${sec_size##*= }"
+	sec_size="${sec_size%% bytes}"
+	echo "IMAGE_SECTOR_SIZE=${sec_size}"
+
+	# get partition information
+	part_info="$(echo "${fdisk_l_output}" | grep "^${imgfile}[0-9]")"
+	num_part=$(echo "${part_info}" | wc -l)
+	echo "IMAGE_NUM_OF_PARTITIONS=${num_part}"
+
+	count=0
+	while read -r line; do
+		count=$((count + 1))
+		# bootflag is set if the line contains '*'
+		if echo "${line}" | grep -q "*"; then
+			line="$(echo "${line}" | sed 's/*//')"
+			echo "IMAGE_P${count}_BOOTFLAG=y"
+		else
+			echo "IMAGE_P${count}_BOOTFLAG=n"
+		fi
+		tmp="$(echo "${line}" | awk '{print $1}')"
+		echo "IMAGE_P${count}_NUMBER=${tmp##*${imgfile}}"
+		tmp="$(echo "${line}" | awk '{print $2}')"
+		echo "IMAGE_P${count}_OFFSET=$((tmp * sec_size))"
+		tmp="$(echo "${line}" | awk '{print $4}')"
+		echo "IMAGE_P${count}_SIZE=$((tmp * sec_size))"
+		tmp="$(echo "${line}" | awk '{print $6}')"
+		echo "IMAGE_P${count}_FSTYPE=${tmp}"
+	done <<< "${part_info}"
+	return 0
+}
+
 extract_information() {
 	local num_of_partitions
 	local img_size=0
@@ -163,81 +205,48 @@ extract_information() {
 	done
 	fdisk_cmd="${fdisk_cmd}w\n"
 
-	echo "Num_of_Partitions: ${num_of_partitions}"
-	echo "Image_Size: ${img_size}"
-	echo "Fdisk_Command: ${fdisk_cmd}"
-	return 0
-}
-
-random_minor_number() {
-	echo "$((100 + RANDOM % 801))"
+	echo "Num_of_Partitions=${num_of_partitions}"
+	echo "Image_Size=${img_size}"
+	echo "Fdisk_Command=${fdisk_cmd}"
 	return 0
 }
 
 format_partitions() {
-	local image=${1}
-	local lodev_minor
-	local loopdev
-	local part_info
-	local part_count
+	local img=${1}
+	local img_info i n_part
 
 	shift 1
-	part_info="$(fdisk -l "${image}" | grep "^${image}" | sed 's/*//')"
-	part_count="$(echo "$part_info" | wc -l)"
+	img_info="$(get_image_info "${img}")"
 
-	lodev_minor=$(random_minor_number)
-	loopdev=/dev/loopimg${lodev_minor}
-	while [ -e "${loopdev}" ]; do
-		lodev_minor=$(random_minor_number)
-		loopdev=/dev/loopimg${lodev_minor}
-	done
-
-	mknod ${loopdev} b 7 ${lodev_minor}0
-	losetup ${loopdev} ${image}
-
-	for part in $(seq 1 ${part_count}); do
+	n_part=$(get_value "${img_info}" "IMAGE_NUM_OF_PARTITIONS")
+	for i in $(seq 1 ${n_part}); do
 		# "<part_no>,<part_size>,<boot_flag>,<part_type>,<fs_type>"
-		local fs_type="$(echo "${!part}" | awk -F, '{print $5}')"
-		local part_name=${image}${part}
-		local part_dev=${loopdev}p${part}
-		local part_minor=${lodev_minor}${part}
+		local fs_type="$(echo "${!i}" | awk -F, '{print $5}')"
+		local p_offset=$(get_value "${img_info}" "IMAGE_P${i}_OFFSET")
+		local p_size=$(get_value "${img_info}" "IMAGE_P${i}_SIZE")
+		local loopdev
 
-		local pstart=$(echo "${part_info}" | grep "${part_name}" | awk '{print $2}')
-		local pend=$(echo "${part_info}" | grep "${part_name}" | awk '{print $3}')
-		local offset=$((pstart * 512))
-		local size=$(( pend * 512 - pstart * 512 + 512))
+		loopdev="$(losetup -f)"
+		losetup -o ${p_offset} --sizelimit ${p_size} ${loopdev} ${img}
 
-		mknod "${part_dev}" b 7 ${part_minor}
-		losetup -o ${offset} --sizelimit ${size} ${part_dev} ${loopdev}
-
-		# For fs_type is raw, no need to perform formation
-		if [ "${fs_type}" != "raw" ]; then
-			if [ ${part} -eq ${part_count} ]; then
-				mkfs -t ${fs_type} -J size=8 ${part_dev}
-			else
-				mkfs -t ${fs_type} ${part_dev}
-			fi
+		# Perform formation for different fs_type
+		#   vfat: format
+		#   ext4: format with journal
+		#   raw: do nothing
+		if [ "${fs_type}" == "ext4" ]; then
+			mkfs -t ${fs_type} -J size=8 ${loopdev} >/dev/null 2>&1
+		elif [ "${fs_type}" == "vfat" ]; then
+			mkfs -t ${fs_type} ${loopdev} >/dev/null
 		fi
 
-		losetup -d ${part_dev}
-		rm -f ${part_dev}
-	done
-
-	losetup -d ${loopdev}
-	rm -f ${loopdev}
-
-	for i in $(seq 0 ${part_count}); do
-		rm -f /dev/loop${lodev_minor}${i}
+		losetup -d ${loopdev}
 	done
 	return 0
 }
 
 main() {
 	local image=${1}
-	local p_info
-	local num_of_partitions
-	local img_size
-	local fdisk_cmd
+	local extracted_info img_size fdisk_cmd
 
 	if [ "${image}" == "-v" ] || [ "${image}" == "--version" ]; then
 		echo "${VERSION}"
@@ -245,17 +254,21 @@ main() {
 	fi
 	shift 1
 
+	if [ -f ${image} ]; then
+		echo "Error: file \"${image}\" already exist" >&2
+		return 1
+	fi
+
 	log_msg "Extract information from options"
-	p_info="$(extract_information "$@")"
-	num_of_partitions="$(echo "${p_info}" | grep "^Num_of_Partitions:" | awk '{print $2}')"
-	img_size="$(echo "${p_info}" | grep "^Image_Size:" | awk '{print $2}')"
-	fdisk_cmd="$(echo "${p_info}" | grep "^Fdisk_Command:" | awk '{print $2}')"
+	extracted_info="$(extract_information "$@")"
+	img_size="$(get_value "${extracted_info}" "Image_Size")"
+	fdisk_cmd="$(get_value "${extracted_info}" "Fdisk_Command")"
 
 	log_msg "Generating image file"
-	dd if=/dev/zero of=${image} bs=1M count=${img_size}
+	truncate -s $((img_size * 1024 * 1024)) ${image}
 
 	log_msg "Creating partitions"
-	echo -ne "${fdisk_cmd}" | fdisk "${image}"
+	echo -ne "${fdisk_cmd}" | fdisk "${image}" >/dev/null
 
 	log_msg "Formating partitions"
 	format_partitions "${image}" "$@"
