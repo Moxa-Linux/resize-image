@@ -46,6 +46,19 @@ Here we take UC-8100 as illustration:
 	# dd if=/dev/mmcblk2 of=/media/usb/uc8100_dump.img
 	```
 
+	Most USB disk file system is FAT32, split image is recommend
+
+	```
+	dd if=/dev/mmcblk2 bs=1M | split --verbose -b 1G - /media/usb/uc8100_dump.img.
+	```
+
+	Merge on laptop
+
+	```
+	cat /media/usb/uc8100_dump.img.* | dd of=/tmp/uc8100_dump.img
+	```	
+
+
 #### 3. Clone or download this repository on your Linux PC
 ```
 # git clone https://github.com/Moxa-Linux/resize-image
