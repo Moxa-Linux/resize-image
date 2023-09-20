@@ -14,7 +14,7 @@
 
 set -e
 
-VERSION=1.3.0
+VERSION=1.3.1
 
 usage() {
 	echo -e "Usage:"
@@ -229,12 +229,17 @@ format_partitions() {
 		loopdev="$(losetup -f)"
 		losetup -o ${p_offset} --sizelimit ${p_size} ${loopdev} ${img}
 
+		# Get block size GH issue #6
+		# https://github.com/Moxa-Linux/resize-image/issues/6
+		o_loop=$(lsblk | grep original_mnt/p${i} | awk '{print $1}')
+		blocksize=$(dumpe2fs /dev/$o_loop 2>&1 | grep 'Block size' | awk '{print $3}')
+
 		# Perform formation for different fs_type
 		#   vfat: format
 		#   ext4: format with journal
 		#   raw: do nothing
 		if [ "${fs_type}" == "ext4" ]; then
-			mkfs -t ${fs_type} -J size=8 ${loopdev} >/dev/null 2>&1
+			mkfs -t ${fs_type} -b ${blocksize} -J size=8 ${loopdev} >/dev/null 2>&1
 		elif [ "${fs_type}" == "vfat" ]; then
 			mkfs -t ${fs_type} ${loopdev} >/dev/null
 		fi
