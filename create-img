@@ -211,6 +211,16 @@ extract_information() {
 	return 0
 }
 
+generate_extra_mke2fs_args() {
+	tune2fs -l $1 | awk -F: ' \
+		/^Block count:/ { blocks = $2 } \
+		/^Inode count:/ { inodes = $2 } \
+		/^Block size:/ { block_size = $2 } \
+		/^Inode size:/ { inode_size = $2 } \
+		function ceil(x, y) {y=int(x); return(x>y?y+1:y)} \
+		END { print "-b ", block_size, "-I ", inode_size, "-i ", ceil(blocks / inodes * block_size)}'
+}
+
 format_partitions() {
 	local img=${1}
 	local img_info i n_part
@@ -224,6 +234,8 @@ format_partitions() {
 		local fs_type="$(echo "${!i}" | awk -F, '{print $5}')"
 		local p_offset=$(get_value "${img_info}" "IMAGE_P${i}_OFFSET")
 		local p_size=$(get_value "${img_info}" "IMAGE_P${i}_SIZE")
+		local ori_loopdev
+		local extra_mke2fs_args
 		local loopdev
 
 		loopdev="$(losetup -f)"
@@ -234,7 +246,9 @@ format_partitions() {
 		#   ext4: format with journal
 		#   raw: do nothing
 		if [ "${fs_type}" == "ext4" ]; then
-			mkfs -t ${fs_type} -J size=8 ${loopdev} >/dev/null 2>&1
+			ori_loopdev=$(lsblk | grep original_mnt/p${i} | awk '{print $1}')
+			extra_mke2fs_args=$(generate_extra_mke2fs_args /dev/${ori_loopdev})
+			mkfs -t ${fs_type} -J size=8 ${extra_mke2fs_args} ${loopdev} >/dev/null 2>&1
 		elif [ "${fs_type}" == "vfat" ]; then
 			mkfs -t ${fs_type} ${loopdev} >/dev/null
 		fi
