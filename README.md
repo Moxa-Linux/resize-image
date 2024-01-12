@@ -73,19 +73,39 @@ The output image file will be named as "resize.img"
 	* UC-8100-ME series:
 
 		including UC-8112-ME-T-LX, UC-8112-ME-T-LX1, UC-8112-ME-T-LX-US-LTE, UC-8112-ME-T-US-LTE-LX1
+	* UC-8410A series (V3.2 and older version):
+
+		including UC-8410A-NW-T-LX, UC-8410A-NW-LX, UC-8410A-T-LX, UC-8410A-LX
+	* UC-8540 series (V1.3 and older version):
+
+		including UC-8540-LX, UC-8540-T-LX, UC-8540-T-CT-LX
+	* UC-8580 series (V1.3 and older version):
+
+		including UC-8580-LX, UC-8580-T-LX, UC-8580-T-CT-LX, UC-8580-Q-LX, UC-8580-T-Q-LX, UC-8580-T-CT-Q-LX
 * Type B
 	* UC-2100 series:
 
 		including UC-2101-LX, UC-2102-LX, UC-2104-LX, UC-2111-LX, UC-2112-LX, UC-2112-T-LX
 	* UC-3100 series:
 
-		including UC-3101-T-US-LX, UC-3101-T-EU-LX, UC-3101-T-AU-LX, UC-3111-T-US-LX, UC-3111-T-EU-LX, UC-3111-T-AU-LX, UC-3121-T-US-LX, UC-3121-T-EU-LX, UC-3121-T-AU-LX
+		including UC-3101-T-US-LX, UC-3101-T-EU-LX, UC-3101-T-AU-LX, UC-3101-T-AP-LX, UC-3111-T-US-LX,
+		UC-3111-T-EU-LX, UC-3111-T-AU-LX, UC-3111-T-AP-LX, UC-3121-T-US-LX, UC-3121-T-EU-LX, UC-3121-T-AU-LX,
+		UC-3121-T-AP-LX, UC-3111-T-EU-LX-NW, UC-3111-T-AP-LX-NW, UC-3111-T-US-LX-NW
 	* UC-5100 series:
 
 		including UC-5101-LX, UC-5101-T-LX, UC-5102-LX, UC-5102-T-LX, UC-5111-LX, UC-5111-T-LX, UC-5112-LX, UC-5112-T-LX
 	* UC-8100A-ME series:
 
 		including UC-8112A-ME-T-LX, UC-8112A-ME-T-US, UC-8112A-ME-T-EU, UC-8112A-ME-T-AP
+	* UC-8410A series (V4.0.2 and newer version):
+
+		including UC-8410A-NW-T-LX, UC-8410A-NW-LX, UC-8410A-T-LX, UC-8410A-LX
+	* UC-8540 series (V2.0 and newer version):
+
+		including UC-8540-LX, UC-8540-T-LX, UC-8540-T-CT-LX
+	* UC-8580 series (V2.0 and newer version):
+
+		including UC-8580-LX, UC-8580-T-LX, UC-8580-T-CT-LX, UC-8580-Q-LX, UC-8580-T-Q-LX, UC-8580-T-CT-Q-LX
 * Type C
 	* UC-8200 series:
 
